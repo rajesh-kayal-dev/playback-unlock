@@ -11,13 +11,38 @@ import { isSpeed, PLAYBACK_LIMITS } from "../shared/playback";
 const emptyLoop: LoopState = { enabled: false, start: null, end: null };
 const loopEvents = ["timeupdate", "playing", "seeked", "ended", "progress", "durationchange", "emptied"];
 
-function videoLabel(video: HTMLVideoElement, index: number) {
-  for (const attribute of ["aria-label", "title"]) {
-    const label = video.getAttribute(attribute)?.slice(0, 512).replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ")
-      .replace(/\s+/g, " ").trim();
-    if (label) return Array.from(label).slice(0, 120).join("");
+function cleanLabel(value: string | null | undefined) {
+  const label = value?.slice(0, 512)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ")
+    .replace(/\s+/g, " ").trim();
+  return label ? Array.from(label).slice(0, 120).join("") : undefined;
+}
+
+function videoLabel(video: HTMLVideoElement, index: number, onlyVideo: boolean) {
+  const labelIds = video.getAttribute("aria-labelledby")?.slice(0, 512).trim().split(/\s+/) ?? [];
+  const referencedLabel = labelIds.map((id) => document.getElementById(id)?.textContent).join(" ");
+  return cleanLabel(referencedLabel) ?? cleanLabel(video.getAttribute("aria-label"))
+    ?? cleanLabel(video.getAttribute("title")) ?? (onlyVideo ? cleanLabel(document.title) : undefined)
+    ?? `Video ${index + 1}`;
+}
+
+function embeddedLessonTitle() {
+  if (location.hostname !== "pwskills.com") return;
+  const player = document.querySelector("iframe#pw-video-player");
+  if (!player) return;
+  const heading = document.evaluate(
+    "//text()[starts-with(normalize-space(.), 'Lecture :') or starts-with(normalize-space(.), 'Lecture:')]",
+    document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null,
+  ).singleNodeValue;
+  const ownTitle = cleanLabel(heading?.textContent?.replace(/^\s*Lecture\s*:\s*/, ""));
+  if (ownTitle) return ownTitle;
+  if (heading) {
+    const siblingTitle = cleanLabel(heading.nextSibling?.textContent);
+    if (siblingTitle) return siblingTitle;
+    const fullHeading = cleanLabel(heading.parentElement?.textContent?.replace(/^\s*Lecture\s*:\s*/, ""));
+    if (fullHeading) return fullHeading;
   }
-  return `Video ${index + 1}`;
+  return cleanLabel(document.title) ?? "PW Skills lecture";
 }
 
 function rangesFor(video: HTMLVideoElement): VideoSummary["seekableRanges"] {
@@ -112,8 +137,13 @@ function start() {
   }
 
   function scan() {
+    const candidates = new Set(Array.from(document.querySelectorAll("video")).filter((video) => {
+      if (!(video instanceof HTMLVideoElement)) return false;
+      const { width, height } = video.getBoundingClientRect();
+      return width > 0 && height > 0 && getComputedStyle(video).visibility === "visible";
+    }));
     for (const video of videos.keys()) {
-      if (video.isConnected && video.ownerDocument === document) continue;
+      if (candidates.has(video)) continue;
       video.removeEventListener("playing", activity);
       video.removeEventListener("pointerdown", activity);
       video.removeEventListener("loadedmetadata", onMetadata);
@@ -122,8 +152,8 @@ function start() {
       if (recent === video) recent = undefined;
       if (selected === video) select(undefined);
     }
-    for (const video of document.querySelectorAll("video")) {
-      if (!(video instanceof HTMLVideoElement) || videos.has(video)) continue;
+    for (const video of candidates) {
+      if (videos.has(video)) continue;
       const bytes = crypto.getRandomValues(new Uint8Array(16));
       videos.set(video, Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""));
       video.addEventListener("playing", activity);
@@ -133,15 +163,15 @@ function start() {
       useDefaultRate(video);
     }
     if (selected) return;
-    const candidates = [...videos.keys()];
+    const choices = [...videos.keys()];
     const visibleArea = (video: HTMLVideoElement) => {
       const rect = video.getBoundingClientRect();
       const width = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(0, rect.left));
       const height = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(0, rect.top));
       return getComputedStyle(video).visibility === "visible" ? width * height : 0;
     };
-    select(candidates.find((video) => !video.paused && !video.ended)
-      ?? recent ?? candidates.sort((left, right) => visibleArea(right) - visibleArea(left))[0]);
+    select(choices.find((video) => !video.paused && !video.ended)
+      ?? recent ?? choices.sort((left, right) => visibleArea(right) - visibleArea(left))[0]);
   }
 
   const observer = new MutationObserver((records) => {
@@ -173,7 +203,7 @@ function start() {
       const seekableRanges = rangesFor(video);
       const seek = seekableRanges.length > 0 && !video.error;
       return {
-        id, label: videoLabel(video, index), currentTime: video.currentTime,
+        id, label: videoLabel(video, index, videos.size === 1), currentTime: video.currentTime,
         duration: Number.isFinite(video.duration) ? video.duration : null,
         playbackRate: video.playbackRate, paused: video.paused, ended: video.ended, seeking: video.seeking,
         ready: video.readyState >= HTMLMediaElement.HAVE_METADATA, seekableRanges,
@@ -184,6 +214,7 @@ function start() {
     const expectedRate = selected && expectedRates.get(selected);
     return {
       status: summaries.length ? "ready" : "no-video",
+      embeddedTitle: summaries.length ? undefined : embeddedLessonTitle(),
       videos: summaries,
       selectedVideoId: selected ? videos.get(selected) ?? null : null,
       loop,

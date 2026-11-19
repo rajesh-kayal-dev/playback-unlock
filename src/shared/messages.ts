@@ -27,6 +27,7 @@ export interface LoopState {
 export interface TabPlaybackState {
   status: "ready" | "no-video" | "access-required" | "error";
   videos: VideoSummary[];
+  embeddedTitle?: string;
   selectedVideoId: string | null;
   loop: LoopState;
   error: ExtensionError | null;
