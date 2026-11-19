@@ -8,6 +8,9 @@ The current MVP is a local-first extension with a React + TypeScript popup, Vite
 
 ## Shared rules for both agents
 
+- Permission, host access, networking, and data collection changes require an explicit product requirement. Use local fixtures or authorized pages for testing and keep credentials and protected content out of test data, logs, and builds.
+- Review commands before running them. Avoid untrusted scripts, preserve existing work, and publish or send project data externally only when requested. Report changes to permissions, networking, or storage in the handoff.
+
 - Start by inspecting the repository tree, `git status`, package manifests, build configuration, current code, and applicable product docs. Preserve existing user changes.
 - Follow the current codebase's conventions and documented commands. Never assume a framework, file structure, package manager, or command that inspection can establish.
 - Keep changes within the requested scope, aligned with acceptance criteria, and small enough to review. Avoid unrelated refactors and dependencies.
