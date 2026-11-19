@@ -89,10 +89,12 @@ export default function App() {
   const issue = error ?? state?.error;
   const loopIssue = issue?.code === "INVALID_LOOP" ? issue.message : undefined;
   const noVideo = state?.status === "no-video";
+  const embeddedTitle = state?.embeddedTitle;
   const hasAccessError = error?.code === "PERMISSION_REQUIRED";
   const status = !state && error
     ? hasAccessError ? "Access needed" : "Unavailable"
-    : video?.support === "unsupported" ? "Unavailable" : video ? "Ready" : noVideo ? "No video" : "Checking…";
+    : video?.support === "unsupported" ? "Unavailable" : video ? "Ready"
+      : embeddedTitle ? "Embedded" : noVideo ? "No video" : "Checking…";
   const videoStatus = video?.support === "unsupported" ? "Could not load"
     : video?.ended ? "Ended" : !video?.ready ? "Loading video" : video.paused ? "Paused" : "Playing";
 
@@ -113,9 +115,11 @@ export default function App() {
           <div className="state-icon" aria-hidden="true">
             {error && !noVideo ? <WarningCircleIcon size={23} /> : <VideoCameraIcon size={23} />}
           </div>
-          <h2>{noVideo ? "No video detected" : error ? status : "Checking this page"}</h2>
+          <h2>{embeddedTitle ?? (noVideo ? "No video detected" : error ? status : "Checking this page")}</h2>
           <p role="status">{error?.message ?? (noVideo
-            ? "No supported video found on this page."
+            ? embeddedTitle
+              ? "Use the course player for this embedded lecture. If it shows a key-system error, check your browser’s protected-content support."
+              : "No supported video found on this page."
             : "Looking for a video you can control.")}</p>
           {(noVideo || (error && !hasAccessError)) && (
             <button type="button" onClick={() => send({ type: "GET_STATE", payload: {} })}>Check again</button>
